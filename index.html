@@ -822,7 +822,16 @@ function openExportModal() {
 
 function closeExportModal() {
   document.getElementById('export-modal').classList.remove('active');
+  // Reset button to initial state
+  const btn = document.getElementById('export-gen-btn');
+  pendingExportFiles = null;
+  btn.innerHTML = 'Generate &amp; Share';
+  btn.onclick = generateExport;
+  btn.disabled = false;
 }
+
+// Cached export files ready to share
+let pendingExportFiles = null;
 
 async function generateExport() {
   const phase = document.getElementById('export-phase').value.trim();
@@ -858,6 +867,28 @@ async function generateExport() {
       { type: 'application/pdf' }
     );
 
+    pendingExportFiles = [xlsxFile, pdfFile];
+
+    // Switch button to "Share Now" so user tap provides a fresh gesture
+    btn.disabled = false;
+    btn.innerHTML = '📤 Share Now';
+    btn.onclick = shareExportFiles;
+
+  } catch (err) {
+    showToast('Error: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = 'Generate &amp; Share';
+    btn.onclick = generateExport;
+  }
+}
+
+async function shareExportFiles() {
+  if (!pendingExportFiles) return;
+
+  const btn = document.getElementById('export-gen-btn');
+  const [xlsxFile, pdfFile] = pendingExportFiles;
+
+  try {
     closeExportModal();
 
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [xlsxFile, pdfFile] })) {
@@ -871,8 +902,10 @@ async function generateExport() {
   } catch (err) {
     if (!err.name?.includes('AbortError')) showToast('Error: ' + err.message);
   } finally {
+    pendingExportFiles = null;
     btn.disabled = false;
     btn.innerHTML = 'Generate &amp; Share';
+    btn.onclick = generateExport;
   }
 }
 
