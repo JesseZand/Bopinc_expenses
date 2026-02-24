@@ -1,4 +1,4 @@
-const CACHE = 'bop-v5';
+const CACHE = 'bop-v6';
 
 const PRECACHE = [
   './',

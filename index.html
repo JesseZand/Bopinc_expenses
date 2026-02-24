@@ -361,7 +361,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v5</span>
+          <span style="margin-left:4px;opacity:0.4">· v6</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -389,7 +389,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       <div class="detail-form">
         <div class="field">
           <div class="field-label">Date</div>
-          <input class="field-input mono" type="text" id="detail-date" placeholder="DD/MM/YYYY">
+          <input class="field-input mono" type="date" id="detail-date">
         </div>
         <div class="field">
           <div class="field-label">Category</div>
@@ -453,7 +453,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <div id="export-actions" style="display:none;flex-direction:column;gap:10px">
       <div style="font-size:13px;color:var(--success);text-align:center;padding:4px 0">✓ Files ready</div>
       <button class="btn-primary" id="export-dl-btn" onclick="downloadExportFiles()">⬇ Download Files</button>
-      <button class="btn-secondary" id="export-share-btn" onclick="shareExportFilesBtn()" style="display:none">📤 Share via App</button>
+      <button class="btn-secondary" id="export-share-btn" onclick="shareExportFilesBtn()" style="display:none">📤 Download &amp; Share via App</button>
     </div>
     <div id="export-error" class="warning-box" style="display:none;font-family:var(--font-mono);font-size:11px;word-break:break-all"></div>
     <button class="btn-secondary" onclick="closeExportModal()">Cancel</button>
@@ -590,7 +590,7 @@ function renderHome() {
     const isSaved = r.status === 'saved';
     const desc    = isSaved ? (r.description || '—') : 'Tap to fill in details';
     const meta    = isSaved
-      ? `${r.currency || '?'} ${parseFloat(r.amount || 0).toFixed(2)} · ${r.date || '?'}`
+      ? `${r.currency || '?'} ${parseFloat(r.amount || 0).toFixed(2)} · ${formatDateDisplay(r.date) || '?'}`
       : new Date(r.createdAt).toLocaleDateString('en-GB');
     const pillClass = isSaved ? 'pill-extracted' : 'pill-pending';
     const pillLabel = isSaved ? 'saved' : 'draft';
@@ -707,12 +707,13 @@ async function handlePhoto(event) {
 }
 
 async function createReceipt(base64) {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD for date input
   const receipt = {
     id:          'r' + Date.now() + Math.random().toString(36).slice(2, 6),
     photoBase64: base64,
     status:      'draft',
     createdAt:   Date.now(),
-    date:        '',
+    date:        today,
     currency:    '',
     amount:      '',
     description: 'Meal'
@@ -915,29 +916,44 @@ async function shareExportFilesBtn() {
   const errEl = document.getElementById('export-error');
   errEl.style.display = 'none';
 
-  try {
-    const xlsxFile = new File([exportedXlsxBlob], exportedXlsxName, { type: exportedXlsxBlob.type });
-    const pdfFile  = new File([exportedPdfBlob],  exportedPdfName,  { type: exportedPdfBlob.type });
-    const shareData = { title: 'BOP Expense Report', files: [xlsxFile, pdfFile] };
+  // Step 1: Download the files first (always works)
+  dlBlob(exportedXlsxBlob, exportedXlsxName);
+  await sleep(500);
+  dlBlob(exportedPdfBlob, exportedPdfName);
 
-    if (navigator.canShare && !navigator.canShare(shareData)) {
-      // Can't share these file types — try sharing one at a time
-      showExportError('canShare returned false for these files. Try downloading instead.');
+  // Step 2: Try native share sheet
+  try {
+    const pdfFile  = new File([exportedPdfBlob],  exportedPdfName,  { type: exportedPdfBlob.type });
+    const xlsxFile = new File([exportedXlsxBlob], exportedXlsxName, { type: exportedXlsxBlob.type });
+
+    // Try sharing both files
+    if (navigator.canShare && navigator.canShare({ files: [pdfFile, xlsxFile] })) {
+      await navigator.share({ files: [pdfFile, xlsxFile] });
+      closeExportModal();
       return;
     }
-
-    await navigator.share(shareData);
-    closeExportModal();
   } catch (err) {
-    if (err.name === 'AbortError') return; // user cancelled
-    showExportError('Share failed: ' + err.name + ': ' + err.message + '. Use Download instead.');
+    if (err.name === 'AbortError') { closeExportModal(); return; }
+    // Share failed — files already downloaded, show guidance
   }
+
+  // If share didn't work, guide the user
+  showExportError('✓ Files saved to Downloads. Open WhatsApp/Signal → tap 📎 → attach from Downloads.', true);
 }
 
-function showExportError(msg) {
+function showExportError(msg, isInfo) {
   const errEl = document.getElementById('export-error');
   errEl.textContent = msg;
   errEl.style.display = 'block';
+  if (isInfo) {
+    errEl.style.background = 'rgba(74,222,128,0.08)';
+    errEl.style.borderColor = 'rgba(74,222,128,0.18)';
+    errEl.style.color = 'var(--success)';
+  } else {
+    errEl.style.background = '';
+    errEl.style.borderColor = '';
+    errEl.style.color = '';
+  }
 }
 
 function resetExportModal() {
@@ -965,6 +981,14 @@ function dlBlob(blob, name) {
 // ─────────────────────────────────────────────
 //  EXCEL BUILDER
 // ─────────────────────────────────────────────
+function formatDateDisplay(isoDate) {
+  // Convert YYYY-MM-DD to DD/MM/YYYY
+  if (!isoDate) return '';
+  const parts = isoDate.split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return isoDate; // return as-is if already in other format
+}
+
 function buildExcel(data, phase, rates) {
   const aoa = [];
   aoa.push([null, 'Expense sheet 2024 Bopinc group']);
@@ -982,7 +1006,7 @@ function buildExcel(data, phase, rates) {
     const rate   = rates[r.currency] || 1;
     const amount = parseFloat(r.amount) || 0;
     aoa.push([
-      null, i + 1, r.date || '', phase,
+      null, i + 1, formatDateDisplay(r.date), phase,
       null, null, r.description || '',
       null, null, null, null, null, null,
       r.currency || '', null,
@@ -1022,7 +1046,7 @@ async function buildPDF(data) {
     doc.setFontSize(8);
     doc.text(`BOP Expenses  ·  Receipt ${i + 1} of ${data.length}`, 6, 5.5);
     doc.setTextColor(240, 180, 41);
-    doc.text(`${r.description || ''} · ${r.date || ''} · ${r.currency || ''} ${r.amount || ''}`, 6, 10.5);
+    doc.text(`${r.description || ''} · ${formatDateDisplay(r.date)} · ${r.currency || ''} ${r.amount || ''}`, 6, 10.5);
 
     try {
       const img = new Image();
@@ -1109,7 +1133,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v5';
+const APP_VERSION = 'v6';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
