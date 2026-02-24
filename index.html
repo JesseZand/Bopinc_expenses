@@ -355,7 +355,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v3</span>
+          <span style="margin-left:4px;opacity:0.4">· v4</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -439,7 +439,15 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       <input class="field-input mono" type="text" id="export-phase" placeholder="e.g. Phase 2 or 3B">
     </div>
     <div id="rate-fields-wrap" style="display:flex;flex-direction:column;gap:12px"></div>
-    <button class="btn-primary" id="export-gen-btn">Generate &amp; Share</button>
+    <!-- Step 1: Build -->
+    <button class="btn-primary" id="export-build-btn" onclick="buildExportFiles()">Build Export</button>
+    <!-- Step 2: Download / Share (hidden until built) -->
+    <div id="export-actions" style="display:none;flex-direction:column;gap:10px">
+      <div style="font-size:13px;color:var(--success);text-align:center;padding:4px 0">✓ Files ready</div>
+      <button class="btn-primary" id="export-dl-btn" onclick="downloadExportFiles()">⬇ Download Files</button>
+      <button class="btn-secondary" id="export-share-btn" onclick="shareExportFilesBtn()" style="display:none">📤 Share via App</button>
+    </div>
+    <div id="export-error" class="warning-box" style="display:none;font-family:var(--font-mono);font-size:11px;word-break:break-all"></div>
     <button class="btn-secondary" onclick="closeExportModal()">Cancel</button>
   </div>
 </div>
@@ -525,7 +533,6 @@ let currentId  = null;
 async function init() {
   db = await openDB();
   await loadReceipts();
-  setupExportBtn(generateExport);
   showScreen('home');
   renderHome();
   setupConnectivity();
@@ -824,21 +831,16 @@ function openExportModal() {
 
 function closeExportModal() {
   document.getElementById('export-modal').classList.remove('active');
-  resetExportBtn();
+  resetExportModal();
 }
 
-// Cached export files ready to share
-let pendingExportFiles = null;
-let exportBtnHandler = null;
+// Export state
+let exportedXlsxBlob = null;
+let exportedPdfBlob = null;
+let exportedXlsxName = '';
+let exportedPdfName = '';
 
-function setupExportBtn(handler) {
-  const btn = document.getElementById('export-gen-btn');
-  if (exportBtnHandler) btn.removeEventListener('click', exportBtnHandler);
-  exportBtnHandler = handler;
-  btn.addEventListener('click', exportBtnHandler);
-}
-
-async function generateExport() {
+async function buildExportFiles() {
   const phase = document.getElementById('export-phase').value.trim();
   if (!phase) { showToast('Enter a phase number'); return; }
 
@@ -852,81 +854,94 @@ async function generateExport() {
     rates[c] = el ? (parseFloat(el.value) || 1) : 1;
   });
 
-  const btn = document.getElementById('export-gen-btn');
+  const btn = document.getElementById('export-build-btn');
+  const errEl = document.getElementById('export-error');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Building…';
+  errEl.style.display = 'none';
 
   try {
     const xlsxBytes = buildExcel(saved, phase, rates);
     const pdfBytes  = await buildPDF(saved);
     const ts        = new Date().toISOString().slice(0, 10);
 
-    pendingExportFiles = {
-      xlsx: { bytes: xlsxBytes, name: `BOP_Expenses_${ts}.xlsx`, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-      pdf:  { bytes: pdfBytes,  name: `BOP_Receipts_${ts}.pdf`,  type: 'application/pdf' }
-    };
+    exportedXlsxName = `BOP_Expenses_${ts}.xlsx`;
+    exportedPdfName  = `BOP_Receipts_${ts}.pdf`;
+    exportedXlsxBlob = new Blob([xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    exportedPdfBlob  = new Blob([pdfBytes],  { type: 'application/pdf' });
 
-    // Switch button to "Share Now" so user tap provides a fresh gesture
-    btn.disabled = false;
-    btn.innerHTML = '📤 Tap to Share';
-    setupExportBtn(shareExportFiles);
+    // Hide build button, show action buttons
+    btn.style.display = 'none';
+    const actions = document.getElementById('export-actions');
+    actions.style.display = 'flex';
+
+    // Show share button only if the API exists
+    const shareBtn = document.getElementById('export-share-btn');
+    if (navigator.share) {
+      shareBtn.style.display = 'block';
+    }
 
   } catch (err) {
-    showToast('Build error: ' + err.message);
-    resetExportBtn();
+    errEl.textContent = 'Build failed: ' + err.name + ': ' + err.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = 'Build Export';
   }
 }
 
-async function shareExportFiles() {
-  if (!pendingExportFiles) return;
-
-  const { xlsx, pdf } = pendingExportFiles;
-
-  // Build File objects fresh inside the click handler
-  const xlsxFile = new File([xlsx.bytes], xlsx.name, { type: xlsx.type });
-  const pdfFile  = new File([pdf.bytes],  pdf.name,  { type: pdf.type });
-
-  let shared = false;
-
-  // Try Web Share API
+function downloadExportFiles() {
+  if (!exportedXlsxBlob || !exportedPdfBlob) return;
   try {
-    if (navigator.share && navigator.canShare) {
-      const shareData = { title: 'BOP Expense Report', files: [xlsxFile, pdfFile] };
-      if (navigator.canShare(shareData)) {
-        await navigator.share(shareData);
-        shared = true;
-      }
-    }
+    dlBlob(exportedXlsxBlob, exportedXlsxName);
+    setTimeout(() => {
+      dlBlob(exportedPdfBlob, exportedPdfName);
+      showToast('2 files downloaded ↓');
+    }, 600);
   } catch (err) {
-    // Silently fall through to download unless user cancelled
-    if (err.name === 'AbortError') {
-      resetExportBtn();
+    showExportError('Download error: ' + err.name + ': ' + err.message);
+  }
+}
+
+async function shareExportFilesBtn() {
+  if (!exportedXlsxBlob || !exportedPdfBlob) return;
+  const errEl = document.getElementById('export-error');
+  errEl.style.display = 'none';
+
+  try {
+    const xlsxFile = new File([exportedXlsxBlob], exportedXlsxName, { type: exportedXlsxBlob.type });
+    const pdfFile  = new File([exportedPdfBlob],  exportedPdfName,  { type: exportedPdfBlob.type });
+    const shareData = { title: 'BOP Expense Report', files: [xlsxFile, pdfFile] };
+
+    if (navigator.canShare && !navigator.canShare(shareData)) {
+      // Can't share these file types — try sharing one at a time
+      showExportError('canShare returned false for these files. Try downloading instead.');
       return;
     }
-    console.warn('Share API failed:', err.name, err.message);
-  }
 
-  // Fallback: direct download
-  if (!shared) {
-    try {
-      dlBlob(xlsxFile, xlsx.name);
-      await sleep(500);
-      dlBlob(pdfFile, pdf.name);
-      showToast('Files downloaded ↓');
-    } catch (dlErr) {
-      showToast('Download failed: ' + dlErr.message);
-    }
+    await navigator.share(shareData);
+    closeExportModal();
+  } catch (err) {
+    if (err.name === 'AbortError') return; // user cancelled
+    showExportError('Share failed: ' + err.name + ': ' + err.message + '. Use Download instead.');
   }
-
-  closeExportModal();
 }
 
-function resetExportBtn() {
-  const btn = document.getElementById('export-gen-btn');
-  pendingExportFiles = null;
+function showExportError(msg) {
+  const errEl = document.getElementById('export-error');
+  errEl.textContent = msg;
+  errEl.style.display = 'block';
+}
+
+function resetExportModal() {
+  exportedXlsxBlob = null;
+  exportedPdfBlob = null;
+  const btn = document.getElementById('export-build-btn');
+  btn.style.display = 'block';
   btn.disabled = false;
-  btn.innerHTML = 'Generate &amp; Share';
-  setupExportBtn(generateExport);
+  btn.innerHTML = 'Build Export';
+  document.getElementById('export-actions').style.display = 'none';
+  document.getElementById('export-share-btn').style.display = 'none';
+  document.getElementById('export-error').style.display = 'none';
 }
 
 function dlBlob(blob, name) {
@@ -1086,7 +1101,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v3';
+const APP_VERSION = 'v4';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
