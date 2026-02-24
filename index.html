@@ -438,7 +438,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       <input class="field-input mono" type="text" id="export-phase" placeholder="e.g. Phase 2 or 3B">
     </div>
     <div id="rate-fields-wrap" style="display:flex;flex-direction:column;gap:12px"></div>
-    <button class="btn-primary" id="export-gen-btn" onclick="generateExport()">Generate &amp; Share</button>
+    <button class="btn-primary" id="export-gen-btn">Generate &amp; Share</button>
     <button class="btn-secondary" onclick="closeExportModal()">Cancel</button>
   </div>
 </div>
@@ -524,6 +524,7 @@ let currentId  = null;
 async function init() {
   db = await openDB();
   await loadReceipts();
+  setupExportBtn(generateExport);
   showScreen('home');
   renderHome();
   setupConnectivity();
@@ -822,16 +823,19 @@ function openExportModal() {
 
 function closeExportModal() {
   document.getElementById('export-modal').classList.remove('active');
-  // Reset button to initial state
-  const btn = document.getElementById('export-gen-btn');
-  pendingExportFiles = null;
-  btn.innerHTML = 'Generate &amp; Share';
-  btn.onclick = generateExport;
-  btn.disabled = false;
+  resetExportBtn();
 }
 
 // Cached export files ready to share
 let pendingExportFiles = null;
+let exportBtnHandler = null;
+
+function setupExportBtn(handler) {
+  const btn = document.getElementById('export-gen-btn');
+  if (exportBtnHandler) btn.removeEventListener('click', exportBtnHandler);
+  exportBtnHandler = handler;
+  btn.addEventListener('click', exportBtnHandler);
+}
 
 async function generateExport() {
   const phase = document.getElementById('export-phase').value.trim();
@@ -871,26 +875,22 @@ async function generateExport() {
 
     // Switch button to "Share Now" so user tap provides a fresh gesture
     btn.disabled = false;
-    btn.innerHTML = '📤 Share Now';
-    btn.onclick = shareExportFiles;
+    btn.innerHTML = '📤 Tap to Share';
+    setupExportBtn(shareExportFiles);
 
   } catch (err) {
     showToast('Error: ' + err.message);
-    btn.disabled = false;
-    btn.innerHTML = 'Generate &amp; Share';
-    btn.onclick = generateExport;
+    resetExportBtn();
   }
 }
 
 async function shareExportFiles() {
   if (!pendingExportFiles) return;
 
-  const btn = document.getElementById('export-gen-btn');
   const [xlsxFile, pdfFile] = pendingExportFiles;
 
   try {
-    closeExportModal();
-
+    // Call share IMMEDIATELY — before any DOM changes that would consume the user gesture
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [xlsxFile, pdfFile] })) {
       await navigator.share({ title: 'BOP Expense Report', files: [xlsxFile, pdfFile] });
     } else {
@@ -899,14 +899,19 @@ async function shareExportFiles() {
       dlBlob(pdfFile, pdfFile.name);
       showToast('Files downloaded');
     }
+    closeExportModal();
   } catch (err) {
     if (!err.name?.includes('AbortError')) showToast('Error: ' + err.message);
-  } finally {
-    pendingExportFiles = null;
-    btn.disabled = false;
-    btn.innerHTML = 'Generate &amp; Share';
-    btn.onclick = generateExport;
+    closeExportModal();
   }
+}
+
+function resetExportBtn() {
+  const btn = document.getElementById('export-gen-btn');
+  pendingExportFiles = null;
+  btn.disabled = false;
+  btn.innerHTML = 'Generate &amp; Share';
+  setupExportBtn(generateExport);
 }
 
 function dlBlob(blob, name) {
