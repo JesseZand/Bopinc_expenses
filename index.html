@@ -362,7 +362,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v7</span>
+          <span style="margin-left:4px;opacity:0.4">· v8</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -982,6 +982,8 @@ function dlBlob(blob, name) {
 // ─────────────────────────────────────────────
 //  EXCEL BUILDER (matches BOP template exactly)
 // ─────────────────────────────────────────────
+// Column index: A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 ... N=13 O=14 P=15 Q=16 R=17
+
 function formatDateDisplay(isoDate) {
   if (!isoDate) return '';
   const parts = isoDate.split('-');
@@ -989,110 +991,159 @@ function formatDateDisplay(isoDate) {
   return isoDate;
 }
 
+function emptyRow(cols) { return new Array(cols).fill(null); }
+
 function buildExcel(data, phase, rates) {
-  const wb = XLSX.utils.book_new();
-  const ws = {};
+  const C = 18; // columns A..R
+  const aoa = [];
 
-  // Helper to set cell
-  function sc(ref, val) { ws[ref] = { v: val, t: typeof val === 'number' ? 'n' : 's' }; }
-  function sf(ref, formula) { ws[ref] = { f: formula }; }
+  // Row 1: title
+  const r1 = emptyRow(C); r1[1] = 'Expense sheet 2024 Bopinc group';
+  aoa.push(r1);
 
-  // ── Header section ──
-  sc('B1', 'Expense sheet 2024 Bopinc group');
-  sc('B3', 'Organisation');
-  sc('D3', 'Stichting BOP Innovation Center');
-  sc('B5', 'Name');
-  sc('C5', '');
-  sc('F5', 'Account number/IBAN');
-  sc('N5', 'Travel dates              from');
-  sc('P5', 'dd/mm/yyyy');
-  sc('Q5', 'to   ');
-  sc('R5', 'dd/mm/yyyy');
-  sc('B6', 'Date    ');
-  sc('C6', 'dd/mm/yyyy');
-  sc('F6', "Account holder's name");
-  sc('N6', 'Destination');
-  sc('B8', 'Project');
-  sc('C8', '');
-  sc('N8', 'Currency');
-  sc('P8', '');
+  // Row 2: empty
+  aoa.push(emptyRow(C));
 
-  // ── Column headers (row 10) ──
-  sc('B10', 'Receipt number');
-  sc('C10', 'Receipt  date');
-  sc('D10', 'Phase');
-  sc('G10', 'Description');
-  sc('N10', 'Currency on invoice/receipt');
-  sc('P10', 'Amount on invoice/receipt');
-  sc('Q10', 'Rate *');
-  sc('R10', 'Amount local currency');
+  // Row 3: organisation
+  const r3 = emptyRow(C); r3[1] = 'Organisation'; r3[3] = 'Stichting BOP Innovation Center';
+  aoa.push(r3);
 
-  // ── Data rows (starting row 11) ──
-  const maxRows = 20;
-  for (let i = 0; i < maxRows; i++) {
-    const row = 11 + i;
-    const r = data[i];
+  // Row 4: empty
+  aoa.push(emptyRow(C));
 
-    if (r) {
-      const rate   = rates[r.currency] || 1;
-      const amount = parseFloat(r.amount) || 0;
+  // Row 5: name / IBAN / travel dates
+  const r5 = emptyRow(C);
+  r5[1] = 'Name'; r5[2] = '';
+  r5[5] = 'Account number/IBAN';
+  r5[13] = 'Travel dates              from'; r5[15] = 'dd/mm/yyyy'; r5[16] = 'to   '; r5[17] = 'dd/mm/yyyy';
+  aoa.push(r5);
 
-      sc('B' + row, i + 1);
-      sc('C' + row, formatDateDisplay(r.date));
-      sc('D' + row, phase);
-      sc('G' + row, r.description || '');
-      sc('N' + row, r.currency || '');
-      sc('P' + row, amount);
-      sc('Q' + row, rate);
-      sf('R' + row, 'P' + row + '*Q' + row);
+  // Row 6: date / account holder / destination
+  const r6 = emptyRow(C);
+  r6[1] = 'Date    '; r6[2] = 'dd/mm/yyyy';
+  r6[5] = "Account holder's name";
+  r6[13] = 'Destination';
+  aoa.push(r6);
+
+  // Row 7: empty
+  aoa.push(emptyRow(C));
+
+  // Row 8: project / currency
+  const r8 = emptyRow(C);
+  r8[1] = 'Project'; r8[2] = '';
+  r8[13] = 'Currency'; r8[15] = '';
+  aoa.push(r8);
+
+  // Row 9: empty
+  aoa.push(emptyRow(C));
+
+  // Row 10: column headers
+  const r10 = emptyRow(C);
+  r10[1] = 'Receipt number'; r10[2] = 'Receipt  date'; r10[3] = 'Phase';
+  r10[6] = 'Description';
+  r10[13] = 'Currency on invoice/receipt';
+  r10[15] = 'Amount on invoice/receipt'; r10[16] = 'Rate *'; r10[17] = 'Amount local currency';
+  aoa.push(r10);
+
+  // Rows 11-30: data rows (20 rows always)
+  for (let i = 0; i < 20; i++) {
+    const row = emptyRow(C);
+    const receipt = data[i];
+    const rowNum = 11 + i; // Excel row number (1-indexed)
+
+    if (receipt) {
+      const rate   = rates[receipt.currency] || 1;
+      const amount = parseFloat(receipt.amount) || 0;
+      row[1] = i + 1;                                // B: receipt number
+      row[2] = formatDateDisplay(receipt.date);       // C: date
+      row[3] = phase;                                 // D: phase
+      row[6] = receipt.description || '';              // G: description
+      row[13] = receipt.currency || '';                // N: currency
+      row[15] = amount;                               // P: amount
+      row[16] = rate;                                  // Q: rate
+      row[17] = { f: 'P' + rowNum + '*Q' + rowNum };  // R: formula
     } else {
-      sc('B' + row, i + 1);
-      sc('C' + row, '');
-      sc('D' + row, '');
-      sc('N' + row, '');
-      sc('P' + row, 0);
-      sc('Q' + row, 1);
-      sf('R' + row, 'P' + row + '*Q' + row);
+      row[1] = i + 1;                                 // B: receipt number
+      row[15] = 0;                                     // P: amount = 0
+      row[16] = 1;                                     // Q: rate = 1
+      row[17] = { f: 'P' + rowNum + '*Q' + rowNum };   // R: formula
     }
+    aoa.push(row);
   }
 
-  // ── Totals (rows 31-33) ──
-  sc('O31', 'Subtotal  ');
-  sf('P31', 'SUM(P11:P30)');
-  sf('R31', 'SUM(R11:R30)');
-  sc('O32', '-/- Advance');
-  sc('R32', 0);
-  sc('O33', 'Total  ');
-  sf('R33', 'R31-R32');
+  // Row 31: subtotal
+  const r31 = emptyRow(C);
+  r31[14] = 'Subtotal  ';
+  r31[15] = { f: 'SUM(P11:P30)' };
+  r31[17] = { f: 'SUM(R11:R30)' };
+  aoa.push(r31);
 
-  // ── Footer ──
-  sc('H35', 'Signature employee:');
-  sc('B36', ' *  Please supply information on the exchange rate used,');
-  sc('B37', '    preferably by providing a credit card of bank statement,');
-  sc('B38', '    otherwise please use:');
-  sc('D38', 'www.exchangerate.com');
+  // Row 32: advance
+  const r32 = emptyRow(C);
+  r32[14] = '-/- Advance';
+  r32[17] = 0;
+  aoa.push(r32);
 
-  // Set sheet range
-  ws['!ref'] = 'A1:R38';
+  // Row 33: total
+  const r33 = emptyRow(C);
+  r33[14] = 'Total  ';
+  r33[17] = { f: 'R31-R32' };
+  aoa.push(r33);
+
+  // Row 34: empty
+  aoa.push(emptyRow(C));
+
+  // Row 35: signature
+  const r35 = emptyRow(C);
+  r35[7] = 'Signature employee:';
+  aoa.push(r35);
+
+  // Rows 36-38: footnote
+  const r36 = emptyRow(C); r36[1] = ' *  Please supply information on the exchange rate used,'; aoa.push(r36);
+  const r37 = emptyRow(C); r37[1] = '    preferably by providing a credit card of bank statement,'; aoa.push(r37);
+  const r38 = emptyRow(C); r38[1] = '    otherwise please use:'; r38[3] = 'www.exchangerate.com'; aoa.push(r38);
+
+  // Build sheet — handle formula objects
+  const plainAoa = aoa.map(row => row.map(cell => {
+    if (cell && typeof cell === 'object' && cell.f) return null; // placeholder for formulas
+    return cell;
+  }));
+
+  const ws = XLSX.utils.aoa_to_sheet(plainAoa);
+
+  // Now inject formulas
+  aoa.forEach((row, ri) => {
+    row.forEach((cell, ci) => {
+      if (cell && typeof cell === 'object' && cell.f) {
+        const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
+        ws[addr] = { t: 'n', f: cell.f };
+      }
+    });
+  });
 
   // Column widths
   ws['!cols'] = [
     { wch: 2 },   // A
-    { wch: 14 },  // B
-    { wch: 12 },  // C
-    { wch: 14 },  // D
+    { wch: 16 },  // B
+    { wch: 14 },  // C
+    { wch: 18 },  // D
     { wch: 4 },   // E
-    { wch: 4 },   // F
-    { wch: 18 },  // G
-    { wch: 4 },   // H-M
-    {}, {}, {}, {}, {},
-    { wch: 14 },  // N
-    { wch: 10 },  // O
-    { wch: 14 },  // P
+    { wch: 22 },  // F
+    { wch: 20 },  // G
+    { wch: 18 },  // H
+    { wch: 4 },   // I
+    { wch: 4 },   // J
+    { wch: 4 },   // K
+    { wch: 4 },   // L
+    { wch: 4 },   // M
+    { wch: 26 },  // N
+    { wch: 12 },  // O
+    { wch: 24 },  // P
     { wch: 8 },   // Q
-    { wch: 16 },  // R
+    { wch: 22 },  // R
   ];
 
+  const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Expenses');
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
 }
@@ -1203,7 +1254,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v7';
+const APP_VERSION = 'v8';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
