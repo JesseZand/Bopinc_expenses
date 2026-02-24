@@ -355,6 +355,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
+          <span style="margin-left:4px;opacity:0.4">· v3</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -860,18 +861,10 @@ async function generateExport() {
     const pdfBytes  = await buildPDF(saved);
     const ts        = new Date().toISOString().slice(0, 10);
 
-    const xlsxFile = new File(
-      [new Blob([xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })],
-      `BOP_Expenses_${ts}.xlsx`,
-      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
-    );
-    const pdfFile = new File(
-      [new Blob([pdfBytes], { type: 'application/pdf' })],
-      `BOP_Receipts_${ts}.pdf`,
-      { type: 'application/pdf' }
-    );
-
-    pendingExportFiles = [xlsxFile, pdfFile];
+    pendingExportFiles = {
+      xlsx: { bytes: xlsxBytes, name: `BOP_Expenses_${ts}.xlsx`, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      pdf:  { bytes: pdfBytes,  name: `BOP_Receipts_${ts}.pdf`,  type: 'application/pdf' }
+    };
 
     // Switch button to "Share Now" so user tap provides a fresh gesture
     btn.disabled = false;
@@ -879,7 +872,7 @@ async function generateExport() {
     setupExportBtn(shareExportFiles);
 
   } catch (err) {
-    showToast('Error: ' + err.message);
+    showToast('Build error: ' + err.message);
     resetExportBtn();
   }
 }
@@ -887,23 +880,45 @@ async function generateExport() {
 async function shareExportFiles() {
   if (!pendingExportFiles) return;
 
-  const [xlsxFile, pdfFile] = pendingExportFiles;
+  const { xlsx, pdf } = pendingExportFiles;
 
+  // Build File objects fresh inside the click handler
+  const xlsxFile = new File([xlsx.bytes], xlsx.name, { type: xlsx.type });
+  const pdfFile  = new File([pdf.bytes],  pdf.name,  { type: pdf.type });
+
+  let shared = false;
+
+  // Try Web Share API
   try {
-    // Call share IMMEDIATELY — before any DOM changes that would consume the user gesture
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [xlsxFile, pdfFile] })) {
-      await navigator.share({ title: 'BOP Expense Report', files: [xlsxFile, pdfFile] });
-    } else {
-      dlBlob(xlsxFile, xlsxFile.name);
-      await sleep(400);
-      dlBlob(pdfFile, pdfFile.name);
-      showToast('Files downloaded');
+    if (navigator.share && navigator.canShare) {
+      const shareData = { title: 'BOP Expense Report', files: [xlsxFile, pdfFile] };
+      if (navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+        shared = true;
+      }
     }
-    closeExportModal();
   } catch (err) {
-    if (!err.name?.includes('AbortError')) showToast('Error: ' + err.message);
-    closeExportModal();
+    // Silently fall through to download unless user cancelled
+    if (err.name === 'AbortError') {
+      resetExportBtn();
+      return;
+    }
+    console.warn('Share API failed:', err.name, err.message);
   }
+
+  // Fallback: direct download
+  if (!shared) {
+    try {
+      dlBlob(xlsxFile, xlsx.name);
+      await sleep(500);
+      dlBlob(pdfFile, pdf.name);
+      showToast('Files downloaded ↓');
+    } catch (dlErr) {
+      showToast('Download failed: ' + dlErr.message);
+    }
+  }
+
+  closeExportModal();
 }
 
 function resetExportBtn() {
@@ -1064,8 +1079,15 @@ function esc(s) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    // Force check for updated service worker
+    reg.update();
+  }).catch(() => {});
 }
+
+// Version indicator for debugging cache issues
+const APP_VERSION = 'v3';
+console.log('BOP Expenses ' + APP_VERSION);
 
 init();
 </script>
