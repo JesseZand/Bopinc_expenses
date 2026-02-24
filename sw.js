@@ -1,10 +1,10 @@
-const CACHE = 'bop-v8';
+const CACHE = 'bop-v9';
 
 const PRECACHE = [
   './',
   './index.html',
   './manifest.json',
-  'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap'
 ];
