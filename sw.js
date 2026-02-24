@@ -1,4 +1,4 @@
-const CACHE = 'bop-v1';
+const CACHE = 'bop-v4';
 
 const PRECACHE = [
   './',
@@ -9,14 +9,14 @@ const PRECACHE = [
   'https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap'
 ];
 
-// Install: cache app shell
+// Install: cache app shell, skip waiting immediately
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
   );
 });
 
-// Activate: clean old caches
+// Activate: delete ALL old caches, claim clients
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
@@ -25,14 +25,32 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch: cache-first for app shell/assets, network-first for API calls
+// Fetch strategy:
+//  - index.html / navigation: network-first (so updates arrive immediately)
+//  - everything else: cache-first (libs, fonts, icons don't change)
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Never intercept Anthropic API calls
+  // Never intercept API calls
   if (url.hostname === 'api.anthropic.com') return;
 
-  // Cache-first for everything else
+  // Network-first for HTML / navigation requests
+  if (e.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
+    e.respondWith(
+      fetch(e.request)
+        .then(resp => {
+          if (resp && resp.status === 200) {
+            const clone = resp.clone();
+            caches.open(CACHE).then(c => c.put(e.request, clone));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Cache-first for static assets (JS libs, fonts, icons)
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
