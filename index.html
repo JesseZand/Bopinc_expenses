@@ -17,8 +17,8 @@
   --surface: #161616;
   --surface2: #202020;
   --surface3: #2A2A2A;
-  --accent: #F0B429;
-  --accent-dim: rgba(240,180,41,0.12);
+  --accent: #f4db27;
+  --accent-dim: rgba(244,219,39,0.12);
   --text: #EFEFEF;
   --muted: #666;
   --danger: #F87171;
@@ -119,7 +119,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   margin-bottom: 5px;
 }
 .receipt-meta {
-  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  font-family: var(--font-mono); font-size: 11px; color: var(--accent);
+  opacity: 0.75;
 }
 .status-pill {
   font-size: 10px; font-weight: 700; padding: 3px 8px;
@@ -127,7 +128,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   letter-spacing: 0.6px;
 }
 .pill-extracted { background: rgba(74,222,128,0.1); color: var(--success); }
-.pill-pending { background: rgba(240,180,41,0.12); color: var(--accent); }
+.pill-pending { background: rgba(244,219,39,0.12); color: var(--accent); }
 .pill-error { background: rgba(248,113,113,0.1); color: var(--danger); }
 
 /* ── FAB ── */
@@ -139,11 +140,11 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   background: var(--accent); color: #000;
   border: none; font-size: 30px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 24px rgba(240,180,41,0.4);
+  box-shadow: 0 6px 24px rgba(244,219,39,0.4);
   z-index: 100; transition: transform 0.1s, box-shadow 0.1s;
   line-height: 1;
 }
-.fab:active { transform: scale(0.9); box-shadow: 0 3px 12px rgba(240,180,41,0.3); }
+.fab:active { transform: scale(0.9); box-shadow: 0 3px 12px rgba(244,219,39,0.3); }
 
 /* ── EMPTY STATE ── */
 .empty-state {
@@ -233,7 +234,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .extracting-bar.active { display: flex; }
 .mini-spinner {
   width: 14px; height: 14px; border-radius: 50%;
-  border: 2px solid rgba(240,180,41,0.2);
+  border: 2px solid rgba(244,219,39,0.2);
   border-top-color: var(--accent);
   animation: spin 0.7s linear infinite; flex-shrink: 0;
 }
@@ -361,7 +362,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v6</span>
+          <span style="margin-left:4px;opacity:0.4">· v7</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -979,50 +980,119 @@ function dlBlob(blob, name) {
 }
 
 // ─────────────────────────────────────────────
-//  EXCEL BUILDER
+//  EXCEL BUILDER (matches BOP template exactly)
 // ─────────────────────────────────────────────
 function formatDateDisplay(isoDate) {
-  // Convert YYYY-MM-DD to DD/MM/YYYY
   if (!isoDate) return '';
   const parts = isoDate.split('-');
   if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-  return isoDate; // return as-is if already in other format
+  return isoDate;
 }
 
 function buildExcel(data, phase, rates) {
-  const aoa = [];
-  aoa.push([null, 'Expense sheet 2024 Bopinc group']);
-  aoa.push([]);
-  aoa.push([null, 'Organisation', null, 'Stichting BOP Innovation Center']);
-  aoa.push([]);
-  aoa.push([null, 'Name', '', null, null, 'Account number/IBAN', null, null, null, null, null, null, null, 'Travel dates              from', null, 'dd/mm/yyyy', 'to   ', 'dd/mm/yyyy']);
-  aoa.push([null, 'Date', 'dd/mm/yyyy', null, null, "Account holder's name", null, null, null, null, null, null, null, 'Destination']);
-  aoa.push([]);
-  aoa.push([null, 'Project', '', null, null, null, null, null, null, null, null, null, null, 'Currency', null, '']);
-  aoa.push([]);
-  aoa.push([null, 'Receipt number', 'Receipt  date', 'Phase', null, null, 'Description', null, null, null, null, null, null, 'Currency on invoice/receipt', null, 'Amount on invoice/receipt', 'Rate *', 'Amount local currency']);
-
-  data.forEach((r, i) => {
-    const rate   = rates[r.currency] || 1;
-    const amount = parseFloat(r.amount) || 0;
-    aoa.push([
-      null, i + 1, formatDateDisplay(r.date), phase,
-      null, null, r.description || '',
-      null, null, null, null, null, null,
-      r.currency || '', null,
-      amount, rate, +(amount * rate).toFixed(2)
-    ]);
-  });
-
-  const subtotal = data.reduce((s, r) =>
-    s + (parseFloat(r.amount) || 0) * (rates[r.currency] || 1), 0);
-
-  aoa.push([null, null, null, null, null, null, null, null, null, null, null, null, null, null, 'Subtotal  ', null, null, +subtotal.toFixed(2)]);
-  aoa.push([null, null, null, null, null, null, null, null, null, null, null, null, null, null, '-/- Advance', null, null, 0]);
-  aoa.push([null, null, null, null, null, null, null, null, null, null, null, null, null, null, 'Total  ', null, null, +subtotal.toFixed(2)]);
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
+  const ws = {};
+
+  // Helper to set cell
+  function sc(ref, val) { ws[ref] = { v: val, t: typeof val === 'number' ? 'n' : 's' }; }
+  function sf(ref, formula) { ws[ref] = { f: formula }; }
+
+  // ── Header section ──
+  sc('B1', 'Expense sheet 2024 Bopinc group');
+  sc('B3', 'Organisation');
+  sc('D3', 'Stichting BOP Innovation Center');
+  sc('B5', 'Name');
+  sc('C5', '');
+  sc('F5', 'Account number/IBAN');
+  sc('N5', 'Travel dates              from');
+  sc('P5', 'dd/mm/yyyy');
+  sc('Q5', 'to   ');
+  sc('R5', 'dd/mm/yyyy');
+  sc('B6', 'Date    ');
+  sc('C6', 'dd/mm/yyyy');
+  sc('F6', "Account holder's name");
+  sc('N6', 'Destination');
+  sc('B8', 'Project');
+  sc('C8', '');
+  sc('N8', 'Currency');
+  sc('P8', '');
+
+  // ── Column headers (row 10) ──
+  sc('B10', 'Receipt number');
+  sc('C10', 'Receipt  date');
+  sc('D10', 'Phase');
+  sc('G10', 'Description');
+  sc('N10', 'Currency on invoice/receipt');
+  sc('P10', 'Amount on invoice/receipt');
+  sc('Q10', 'Rate *');
+  sc('R10', 'Amount local currency');
+
+  // ── Data rows (starting row 11) ──
+  const maxRows = 20;
+  for (let i = 0; i < maxRows; i++) {
+    const row = 11 + i;
+    const r = data[i];
+
+    if (r) {
+      const rate   = rates[r.currency] || 1;
+      const amount = parseFloat(r.amount) || 0;
+
+      sc('B' + row, i + 1);
+      sc('C' + row, formatDateDisplay(r.date));
+      sc('D' + row, phase);
+      sc('G' + row, r.description || '');
+      sc('N' + row, r.currency || '');
+      sc('P' + row, amount);
+      sc('Q' + row, rate);
+      sf('R' + row, 'P' + row + '*Q' + row);
+    } else {
+      sc('B' + row, i + 1);
+      sc('C' + row, '');
+      sc('D' + row, '');
+      sc('N' + row, '');
+      sc('P' + row, 0);
+      sc('Q' + row, 1);
+      sf('R' + row, 'P' + row + '*Q' + row);
+    }
+  }
+
+  // ── Totals (rows 31-33) ──
+  sc('O31', 'Subtotal  ');
+  sf('P31', 'SUM(P11:P30)');
+  sf('R31', 'SUM(R11:R30)');
+  sc('O32', '-/- Advance');
+  sc('R32', 0);
+  sc('O33', 'Total  ');
+  sf('R33', 'R31-R32');
+
+  // ── Footer ──
+  sc('H35', 'Signature employee:');
+  sc('B36', ' *  Please supply information on the exchange rate used,');
+  sc('B37', '    preferably by providing a credit card of bank statement,');
+  sc('B38', '    otherwise please use:');
+  sc('D38', 'www.exchangerate.com');
+
+  // Set sheet range
+  ws['!ref'] = 'A1:R38';
+
+  // Column widths
+  ws['!cols'] = [
+    { wch: 2 },   // A
+    { wch: 14 },  // B
+    { wch: 12 },  // C
+    { wch: 14 },  // D
+    { wch: 4 },   // E
+    { wch: 4 },   // F
+    { wch: 18 },  // G
+    { wch: 4 },   // H-M
+    {}, {}, {}, {}, {},
+    { wch: 14 },  // N
+    { wch: 10 },  // O
+    { wch: 14 },  // P
+    { wch: 8 },   // Q
+    { wch: 16 },  // R
+  ];
+
   XLSX.utils.book_append_sheet(wb, ws, 'Expenses');
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
 }
@@ -1045,7 +1115,7 @@ async function buildPDF(data) {
     doc.setTextColor(200, 200, 200);
     doc.setFontSize(8);
     doc.text(`BOP Expenses  ·  Receipt ${i + 1} of ${data.length}`, 6, 5.5);
-    doc.setTextColor(240, 180, 41);
+    doc.setTextColor(244, 219, 39);
     doc.text(`${r.description || ''} · ${formatDateDisplay(r.date)} · ${r.currency || ''} ${r.amount || ''}`, 6, 10.5);
 
     try {
@@ -1133,7 +1203,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v6';
+const APP_VERSION = 'v7';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
