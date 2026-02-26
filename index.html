@@ -11,6 +11,7 @@
 <link rel="manifest" href="manifest.json">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css');
 
 :root {
   --bg: #0D0D0D;
@@ -334,6 +335,53 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   font-size: 24px; cursor: pointer; padding: 12px 8px;
 }
 
+/* ── CROP OVERLAY ── */
+.crop-overlay {
+  display: none; position: fixed; inset: 0;
+  background: #000; z-index: 500;
+  flex-direction: column;
+}
+.crop-overlay.active { display: flex; }
+.crop-container {
+  flex: 1; position: relative; overflow: hidden; min-height: 0;
+}
+.crop-container img {
+  display: block; max-width: 100%;
+}
+.crop-toolbar {
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px 24px;
+  padding-bottom: calc(24px + var(--safe-bottom));
+  background: #000; gap: 16px;
+  flex-shrink: 0; position: relative; z-index: 10;
+}
+.crop-btn-use {
+  background: var(--accent); color: #000; border: none;
+  padding: 14px 32px; border-radius: 12px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  font-family: var(--font-ui); letter-spacing: -0.2px;
+  transition: opacity 0.1s;
+}
+.crop-btn-use:active { opacity: 0.85; }
+.crop-btn-cancel {
+  background: none; border: none; color: #fff;
+  font-size: 15px; font-weight: 600; cursor: pointer;
+  font-family: var(--font-ui); padding: 14px 8px;
+}
+.crop-btn-rotate {
+  background: var(--surface3); border: none; color: #fff;
+  width: 44px; height: 44px; border-radius: 10px;
+  font-size: 20px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.crop-btn-rotate:active { opacity: 0.7; }
+
+/* Cropper.js dark theme overrides */
+.cropper-view-box { outline: 2px solid var(--accent); outline-color: rgba(244,219,39,0.75); }
+.cropper-line { background-color: var(--accent); }
+.cropper-point { background-color: var(--accent); width: 10px; height: 10px; opacity: 1; }
+.cropper-modal { background-color: #000; }
+
 /* ── UTILS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
@@ -362,7 +410,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v10</span>
+          <span style="margin-left:4px;opacity:0.4">· v11</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -434,6 +482,18 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     </div>
   </div>
 
+  <!-- Crop overlay -->
+  <div class="crop-overlay" id="crop-overlay">
+    <div class="crop-container">
+      <img id="crop-image" src="" alt="Crop">
+    </div>
+    <div class="crop-toolbar">
+      <button class="crop-btn-cancel" onclick="cancelCrop()">Retake</button>
+      <button class="crop-btn-rotate" onclick="rotateCrop()" title="Rotate">↻</button>
+      <button class="crop-btn-use" onclick="confirmCrop()">Use Photo</button>
+    </div>
+  </div>
+
 </div>
 
 <!-- ══ EXPORT MODAL ══ -->
@@ -487,6 +547,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 <div class="toast" id="toast"></div>
 
 <!-- ══ SCRIPTS ══ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
@@ -685,10 +746,9 @@ async function capturePhoto() {
   canvas.getContext('2d').drawImage(video, 0, 0);
 
   closeCamera();
-  showToast('Saving photo…');
 
   const base64 = await resizeCanvasToBase64(canvas, 1400);
-  await createReceipt(base64);
+  openCrop(base64);
 }
 
 function resizeCanvasToBase64(srcCanvas, maxDim) {
@@ -710,10 +770,9 @@ async function handlePhoto(event) {
   event.target.value = '';
   if (!file) return;
 
-  showToast('Saving photo…');
   try {
     const base64 = await resizeToBase64(file, 1400);
-    await createReceipt(base64);
+    openCrop(base64);
   } catch (err) {
     showToast('Could not load image');
   }
@@ -760,6 +819,74 @@ function resizeToBase64(file, maxDim) {
     };
     img.src = url;
   });
+}
+
+// ─────────────────────────────────────────────
+//  CROP
+// ─────────────────────────────────────────────
+let cropper = null;
+let cropSourceBase64 = null;
+
+function openCrop(base64) {
+  cropSourceBase64 = base64;
+  const imgEl = document.getElementById('crop-image');
+  imgEl.src = base64;
+  document.getElementById('crop-overlay').classList.add('active');
+
+  // Destroy previous instance if any
+  if (cropper) { cropper.destroy(); cropper = null; }
+
+  // Wait for image to load, then init Cropper
+  imgEl.onload = () => {
+    cropper = new Cropper(imgEl, {
+      viewMode: 1,
+      dragMode: 'move',
+      autoCropArea: 0.92,
+      responsive: true,
+      restore: false,
+      guides: true,
+      center: true,
+      highlight: false,
+      cropBoxMovable: true,
+      cropBoxResizable: true,
+      toggleDragModeOnDblclick: false,
+      background: false,
+    });
+  };
+}
+
+function cancelCrop() {
+  closeCrop();
+  // Re-open camera so user can retake
+  triggerCamera();
+}
+
+function closeCrop() {
+  document.getElementById('crop-overlay').classList.remove('active');
+  if (cropper) { cropper.destroy(); cropper = null; }
+  document.getElementById('crop-image').src = '';
+  cropSourceBase64 = null;
+}
+
+function rotateCrop() {
+  if (cropper) cropper.rotate(90);
+}
+
+async function confirmCrop() {
+  if (!cropper) return;
+
+  showToast('Saving…');
+
+  // Get cropped canvas, then resize to max 1400px
+  const croppedCanvas = cropper.getCroppedCanvas({
+    maxWidth: 1400,
+    maxHeight: 1400,
+    imageSmoothingQuality: 'high',
+  });
+
+  const croppedBase64 = croppedCanvas.toDataURL('image/jpeg', 0.88);
+  closeCrop();
+  await createReceipt(croppedBase64);
 }
 
 // ─────────────────────────────────────────────
@@ -1167,6 +1294,12 @@ window.addEventListener('popstate', () => {
     history.pushState({ screen: 'camera' }, '');
     return;
   }
+  // Close crop
+  if (document.getElementById('crop-overlay').classList.contains('active')) {
+    closeCrop();
+    history.pushState({ screen: 'crop' }, '');
+    return;
+  }
   // Go back to home
   showHome();
 });
@@ -1197,7 +1330,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v10';
+const APP_VERSION = 'v11';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
