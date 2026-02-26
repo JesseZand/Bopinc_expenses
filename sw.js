@@ -1,4 +1,4 @@
-const CACHE = 'bop-v9';
+const CACHE = 'bop-v10';
 
 const PRECACHE = [
   './',
@@ -60,7 +60,7 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }
         return resp;
-      }).catch(() => cached);
-    })
+      });
+    }).catch(() => caches.match(e.request))
   );
 });
