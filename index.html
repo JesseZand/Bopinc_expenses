@@ -88,7 +88,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 /* ── LIST ── */
 .scroll-area {
   flex: 1; overflow-y: auto; padding: 14px 16px;
-  padding-bottom: calc(90px + var(--safe-bottom));
+  padding-bottom: calc(80px + var(--safe-bottom));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -132,20 +132,30 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .pill-pending { background: rgba(244,219,39,0.12); color: var(--accent); }
 .pill-error { background: rgba(248,113,113,0.1); color: var(--danger); }
 
-/* ── FAB ── */
-.fab {
-  position: fixed;
-  bottom: calc(22px + var(--safe-bottom));
-  right: 22px;
-  width: 62px; height: 62px; border-radius: 31px;
-  background: var(--accent); color: #000;
-  border: none; font-size: 30px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 24px rgba(244,219,39,0.4);
-  z-index: 100; transition: transform 0.1s, box-shadow 0.1s;
-  line-height: 1;
+/* ── BOTTOM ACTION BAR ── */
+.bottom-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; gap: 10px;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + var(--safe-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 100;
 }
-.fab:active { transform: scale(0.9); box-shadow: 0 3px 12px rgba(244,219,39,0.3); }
+.bottom-bar-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px 10px; border-radius: 12px;
+  font-size: 14px; font-weight: 600; font-family: var(--font-ui);
+  cursor: pointer; transition: opacity 0.1s; border: none;
+}
+.bottom-bar-btn:active { opacity: 0.8; }
+.bottom-bar-btn-camera {
+  background: var(--accent); color: #000;
+}
+.bottom-bar-btn-upload {
+  background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border);
+}
 
 /* ── EMPTY STATE ── */
 .empty-state {
@@ -220,6 +230,16 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .detail-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .receipt-image-wrap { width: 100%; background: #000; position: relative; }
 .receipt-image-wrap img { width: 100%; max-height: 44vh; object-fit: contain; display: block; }
+.receipt-pages { width: 100%; background: #000; }
+.receipt-pages img { width: 100%; object-fit: contain; display: block; }
+.page-divider {
+  height: 2px; background: var(--surface3);
+  margin: 0; position: relative;
+}
+.page-label {
+  font-size: 10px; color: var(--muted); text-align: center;
+  padding: 4px 0; background: #000; font-family: var(--font-mono);
+}
 .detail-form {
   padding: 20px 16px;
   display: flex; flex-direction: column; gap: 15px;
@@ -410,7 +430,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v16</span>
+          <span style="margin-left:4px;opacity:0.4">· v17</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -421,7 +441,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <div class="scroll-area" id="home-list">
       <!-- populated by renderHome() -->
     </div>
-    <button class="fab" onclick="triggerCamera()">+</button>
+    <div class="bottom-bar">
+      <button class="bottom-bar-btn bottom-bar-btn-camera" onclick="triggerCamera()">📷 Camera</button>
+      <button class="bottom-bar-btn bottom-bar-btn-upload" onclick="triggerUpload()">📎 Upload invoice file</button>
+    </div>
   </div>
 
   <!-- ══ DETAIL SCREEN ══ -->
@@ -432,8 +455,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       <div style="width:48px"></div><!-- spacer -->
     </div>
     <div class="detail-scroll">
-      <div class="receipt-image-wrap">
-        <img id="detail-photo" src="" alt="Receipt photo">
+      <div id="detail-images">
+        <!-- populated by renderDetail() -->
       </div>
       <div class="detail-form">
         <div class="field">
@@ -468,6 +491,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   <!-- Hidden camera input (fallback) -->
   <input type="file" id="camera-input" accept="image/*" capture="environment"
          style="position:absolute;opacity:0;pointer-events:none" onchange="handlePhoto(event)">
+
+  <!-- Hidden upload input (images + PDFs) -->
+  <input type="file" id="upload-input" accept="image/*,application/pdf"
+         style="position:absolute;opacity:0;pointer-events:none" onchange="handleUpload(event)">
 
   <!-- Camera viewfinder overlay -->
   <div class="camera-overlay" id="camera-overlay">
@@ -546,11 +573,17 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 <div class="toast" id="toast"></div>
 
 <!-- ══ SCRIPTS ══ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 'use strict';
+
+// Configure pdf.js worker
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
 
 // ─────────────────────────────────────────────
 //  DB
@@ -642,7 +675,7 @@ function renderHome() {
       <div class="empty-state">
         <div class="empty-icon">🧾</div>
         <div class="empty-h">No receipts yet</div>
-        <div class="empty-p">Tap <strong style="color:var(--accent)">+</strong> to photograph your first receipt. Works offline too.</div>
+        <div class="empty-p">Tap <strong style="color:var(--accent)">Camera</strong> to photograph a receipt or <strong style="color:var(--accent)">Upload</strong> to add a digital invoice. Works offline too.</div>
       </div>`;
     return;
   }
@@ -777,11 +810,87 @@ async function handlePhoto(event) {
   }
 }
 
-async function createReceipt(base64) {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD for date input
+// ─────────────────────────────────────────────
+//  UPLOAD (images + PDFs)
+// ─────────────────────────────────────────────
+function triggerUpload() {
+  document.getElementById('upload-input').click();
+}
+
+async function handleUpload(event) {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    showToast('Loading PDF…');
+    try {
+      const pages = await renderPdfToImages(file, 1400);
+      if (pages.length === 0) { showToast('Could not read PDF'); return; }
+
+      if (pages.length === 1) {
+        // Single page PDF → crop flow
+        openCrop(pages[0], 'upload');
+      } else {
+        // Multi-page → skip crop, create receipt directly
+        showToast(`Loaded ${pages.length}-page invoice`);
+        await createReceipt(pages[0], pages.slice(1));
+      }
+    } catch (err) {
+      console.error('PDF render error:', err);
+      showToast('Could not load PDF');
+    }
+  } else {
+    // Image file → crop flow (same as camera)
+    try {
+      const base64 = await resizeToBase64(file, 1400);
+      openCrop(base64, 'upload');
+    } catch (err) {
+      showToast('Could not load image');
+    }
+  }
+}
+
+async function renderPdfToImages(file, maxDim) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    // Render at 2x for crisp text, then scale down
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min((maxDim * 2) / baseViewport.width, (maxDim * 2) / baseViewport.height, 3);
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+    // Resize to maxDim
+    let w = canvas.width, h = canvas.height;
+    if (w > maxDim || h > maxDim) {
+      if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+      else        { w = Math.round(w * maxDim / h); h = maxDim; }
+    }
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    out.getContext('2d').drawImage(canvas, 0, 0, w, h);
+    pages.push(out.toDataURL('image/jpeg', 0.88));
+  }
+
+  return pages;
+}
+
+async function createReceipt(base64, extraPages) {
+  const today = new Date().toISOString().slice(0, 10);
   const receipt = {
     id:          'r' + Date.now() + Math.random().toString(36).slice(2, 6),
     photoBase64: base64,
+    extraPages:  extraPages || [],
     status:      'draft',
     createdAt:   Date.now(),
     date:        today,
@@ -825,9 +934,11 @@ function resizeToBase64(file, maxDim) {
 // ─────────────────────────────────────────────
 let cropper = null;
 let cropSourceBase64 = null;
+let cropSource = 'camera'; // 'camera' or 'upload'
 
-function openCrop(base64) {
+function openCrop(base64, source) {
   cropSourceBase64 = base64;
+  cropSource = source || 'camera';
   const imgEl = document.getElementById('crop-image');
   imgEl.src = base64;
   document.getElementById('crop-overlay').classList.add('active');
@@ -856,8 +967,11 @@ function openCrop(base64) {
 
 function cancelCrop() {
   closeCrop();
-  // Re-open camera so user can retake
-  triggerCamera();
+  if (cropSource === 'upload') {
+    triggerUpload();
+  } else {
+    triggerCamera();
+  }
 }
 
 function closeCrop() {
@@ -902,7 +1016,22 @@ function openDetail(id) {
 function renderDetail(r) {
   const num = receipts.findIndex(x => x.id === r.id) + 1;
   document.getElementById('detail-title').textContent = `Receipt #${num}`;
-  document.getElementById('detail-photo').src    = r.photoBase64 || '';
+
+  // Render images (page 1 + extra pages)
+  const container = document.getElementById('detail-images');
+  const allPages = [r.photoBase64, ...(r.extraPages || [])];
+  const totalPages = allPages.length;
+
+  if (totalPages === 1) {
+    container.innerHTML = `<div class="receipt-image-wrap"><img src="${allPages[0]}" alt="Receipt"></div>`;
+  } else {
+    container.innerHTML = allPages.map((src, i) =>
+      `${i > 0 ? '<div class="page-divider"></div>' : ''}
+       <div class="page-label">Page ${i + 1} of ${totalPages}</div>
+       <div class="receipt-pages"><img src="${src}" alt="Page ${i + 1}"></div>`
+    ).join('');
+  }
+
   document.getElementById('detail-date').value  = r.date || '';
   document.getElementById('detail-currency').value = r.currency || '';
   document.getElementById('detail-amount').value = r.amount || '';
@@ -1159,36 +1288,46 @@ async function buildPDF(data) {
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
 
+  let firstPage = true;
+
   for (let i = 0; i < data.length; i++) {
-    if (i > 0) doc.addPage();
     const r = data[i];
+    const allPages = [r.photoBase64, ...(r.extraPages || [])];
+    const totalPages = allPages.length;
 
-    doc.setFillColor(20, 20, 20);
-    doc.rect(0, 0, W, 14, 'F');
-    doc.setTextColor(200, 200, 200);
-    doc.setFontSize(8);
-    doc.text(`BOP Expenses  ·  Receipt ${i + 1} of ${data.length}`, 6, 5.5);
-    doc.setTextColor(244, 219, 39);
-    doc.text(`${r.description || ''} · ${formatDateDisplay(r.date)} · ${r.currency || ''} ${r.amount || ''}`, 6, 10.5);
+    for (let p = 0; p < allPages.length; p++) {
+      if (!firstPage) doc.addPage();
+      firstPage = false;
 
-    try {
-      const img = new Image();
-      img.src = r.photoBase64;
-      await new Promise(res => { img.onload = res; img.onerror = res; });
-      if (img.naturalWidth) {
-        const margin = 6;
-        const aw = W - margin * 2;
-        const ah = H - 14 - margin * 2;
-        const ir = img.naturalWidth / img.naturalHeight;
-        const ar = aw / ah;
-        let dw, dh;
-        if (ir > ar) { dw = aw; dh = aw / ir; }
-        else         { dh = ah; dw = ah * ir; }
-        const x = margin + (aw - dw) / 2;
-        const y = 14 + margin + (ah - dh) / 2;
-        doc.addImage(r.photoBase64, r.photoBase64.includes('image/png') ? 'PNG' : 'JPEG', x, y, dw, dh);
-      }
-    } catch (_) {}
+      // Header bar
+      doc.setFillColor(20, 20, 20);
+      doc.rect(0, 0, W, 14, 'F');
+      doc.setTextColor(200, 200, 200);
+      doc.setFontSize(8);
+      const pageLabel = totalPages > 1 ? ` (page ${p + 1}/${totalPages})` : '';
+      doc.text(`BOP Expenses  ·  Receipt ${i + 1} of ${data.length}${pageLabel}`, 6, 5.5);
+      doc.setTextColor(244, 219, 39);
+      doc.text(`${r.description || ''} · ${formatDateDisplay(r.date)} · ${r.currency || ''} ${r.amount || ''}`, 6, 10.5);
+
+      try {
+        const img = new Image();
+        img.src = allPages[p];
+        await new Promise(res => { img.onload = res; img.onerror = res; });
+        if (img.naturalWidth) {
+          const margin = 6;
+          const aw = W - margin * 2;
+          const ah = H - 14 - margin * 2;
+          const ir = img.naturalWidth / img.naturalHeight;
+          const ar = aw / ah;
+          let dw, dh;
+          if (ir > ar) { dw = aw; dh = aw / ir; }
+          else         { dh = ah; dw = ah * ir; }
+          const x = margin + (aw - dw) / 2;
+          const y = 14 + margin + (ah - dh) / 2;
+          doc.addImage(allPages[p], allPages[p].includes('image/png') ? 'PNG' : 'JPEG', x, y, dw, dh);
+        }
+      } catch (_) {}
+    }
   }
 
   return doc.output('arraybuffer');
@@ -1296,7 +1435,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
