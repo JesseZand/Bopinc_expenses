@@ -410,7 +410,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v14</span>
+          <span style="margin-left:4px;opacity:0.4">· v15</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -513,7 +513,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <!-- Step 2: Share (hidden until built) -->
     <div id="export-actions" style="display:none;flex-direction:column;gap:10px">
       <div style="font-size:13px;color:var(--success);text-align:center;padding:4px 0">✓ Files ready</div>
-      <button class="btn-primary" id="export-share-btn" onclick="shareExportFilesBtn()">⬇ Download Files</button>
+      <button class="btn-primary" id="export-share-btn" onclick="shareExportFilesBtn()">⬇ Download expense sheet &amp; invoices</button>
     </div>
     <div id="export-error" class="warning-box" style="display:none;font-family:var(--font-mono);font-size:11px;word-break:break-all"></div>
     <button class="btn-secondary" onclick="closeExportModal()">Cancel</button>
@@ -1289,7 +1289,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
