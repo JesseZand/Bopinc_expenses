@@ -410,7 +410,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v12</span>
+          <span style="margin-left:4px;opacity:0.4">· v14</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -513,7 +513,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <!-- Step 2: Share (hidden until built) -->
     <div id="export-actions" style="display:none;flex-direction:column;gap:10px">
       <div style="font-size:13px;color:var(--success);text-align:center;padding:4px 0">✓ Files ready</div>
-      <button class="btn-primary" id="export-share-btn" onclick="shareExportFilesBtn()">📤 Share Files</button>
+      <button class="btn-primary" id="export-share-btn" onclick="shareExportFilesBtn()">⬇ Download Files</button>
     </div>
     <div id="export-error" class="warning-box" style="display:none;font-family:var(--font-mono);font-size:11px;word-break:break-all"></div>
     <button class="btn-secondary" onclick="closeExportModal()">Cancel</button>
@@ -1046,27 +1046,10 @@ async function shareExportFilesBtn() {
   const errEl = document.getElementById('export-error');
   errEl.style.display = 'none';
 
-  const pdfFile  = new File([exportedPdfBlob],  exportedPdfName,  { type: exportedPdfBlob.type });
-  const xlsxFile = new File([exportedXlsxBlob], exportedXlsxName, { type: exportedXlsxBlob.type });
-
-  // Try native share sheet
-  try {
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile, xlsxFile] })) {
-      await navigator.share({ files: [pdfFile, xlsxFile] });
-      showToast('Shared ✓');
-      closeExportModal();
-      return;
-    }
-  } catch (err) {
-    if (err.name === 'AbortError') return; // user dismissed — keep modal open to retry
-    // Share failed — fall through to download fallback
-  }
-
-  // Fallback: download files + show guidance
   dlBlob(exportedXlsxBlob, exportedXlsxName);
   await sleep(500);
   dlBlob(exportedPdfBlob, exportedPdfName);
-  showExportError('✓ Files saved to Downloads. Open WhatsApp/Signal → tap 📎 → attach from Downloads.', true);
+  showExportError('✓ 2 files saved to Downloads: 1 Excel + 1 PDF. Open WhatsApp/Signal → tap 📎 → attach both from Downloads.', true);
 }
 
 function showExportError(msg, isInfo) {
@@ -1306,7 +1289,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v14';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
