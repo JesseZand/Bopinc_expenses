@@ -410,7 +410,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v15</span>
+          <span style="margin-left:4px;opacity:0.4">· v16</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -1283,13 +1283,20 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then(reg => {
-    // Force check for updated service worker
     reg.update();
   }).catch(() => {});
+
+  // Auto-reload when a new service worker takes over
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v15';
+const APP_VERSION = 'v16';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
