@@ -410,7 +410,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div class="topbar-sub" id="conn-status">
           <span class="dot dot-online" id="conn-dot"></span>
           <span id="conn-label">Online</span>
-          <span style="margin-left:4px;opacity:0.4">· v11</span>
+          <span style="margin-left:4px;opacity:0.4">· v12</span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -510,11 +510,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <div id="rate-fields-wrap" style="display:flex;flex-direction:column;gap:12px"></div>
     <!-- Step 1: Build -->
     <button class="btn-primary" id="export-build-btn" onclick="buildExportFiles()">Build Export</button>
-    <!-- Step 2: Download / Share (hidden until built) -->
+    <!-- Step 2: Share (hidden until built) -->
     <div id="export-actions" style="display:none;flex-direction:column;gap:10px">
       <div style="font-size:13px;color:var(--success);text-align:center;padding:4px 0">✓ Files ready</div>
-      <button class="btn-primary" id="export-dl-btn" onclick="downloadExportFiles()">⬇ Download Files</button>
-      <button class="btn-secondary" id="export-share-btn" onclick="shareExportFilesBtn()" style="display:none">📤 Download &amp; Share via App</button>
+      <button class="btn-primary" id="export-share-btn" onclick="shareExportFilesBtn()">📤 Share Files</button>
     </div>
     <div id="export-error" class="warning-box" style="display:none;font-family:var(--font-mono);font-size:11px;word-break:break-all"></div>
     <button class="btn-secondary" onclick="closeExportModal()">Cancel</button>
@@ -1032,14 +1031,7 @@ async function buildExportFiles() {
 
     // Hide build button, show action buttons
     btn.style.display = 'none';
-    const actions = document.getElementById('export-actions');
-    actions.style.display = 'flex';
-
-    // Show share button only if the API exists
-    const shareBtn = document.getElementById('export-share-btn');
-    if (navigator.share) {
-      shareBtn.style.display = 'block';
-    }
+    document.getElementById('export-actions').style.display = 'flex';
 
   } catch (err) {
     errEl.textContent = 'Build failed: ' + err.name + ': ' + err.message;
@@ -1049,46 +1041,31 @@ async function buildExportFiles() {
   }
 }
 
-function downloadExportFiles() {
-  if (!exportedXlsxBlob || !exportedPdfBlob) return;
-  try {
-    dlBlob(exportedXlsxBlob, exportedXlsxName);
-    setTimeout(() => {
-      dlBlob(exportedPdfBlob, exportedPdfName);
-      showToast('2 files downloaded ↓');
-    }, 600);
-  } catch (err) {
-    showExportError('Download error: ' + err.name + ': ' + err.message);
-  }
-}
-
 async function shareExportFilesBtn() {
   if (!exportedXlsxBlob || !exportedPdfBlob) return;
   const errEl = document.getElementById('export-error');
   errEl.style.display = 'none';
 
-  // Step 1: Download the files first (always works)
-  dlBlob(exportedXlsxBlob, exportedXlsxName);
-  await sleep(500);
-  dlBlob(exportedPdfBlob, exportedPdfName);
+  const pdfFile  = new File([exportedPdfBlob],  exportedPdfName,  { type: exportedPdfBlob.type });
+  const xlsxFile = new File([exportedXlsxBlob], exportedXlsxName, { type: exportedXlsxBlob.type });
 
-  // Step 2: Try native share sheet
+  // Try native share sheet
   try {
-    const pdfFile  = new File([exportedPdfBlob],  exportedPdfName,  { type: exportedPdfBlob.type });
-    const xlsxFile = new File([exportedXlsxBlob], exportedXlsxName, { type: exportedXlsxBlob.type });
-
-    // Try sharing both files
-    if (navigator.canShare && navigator.canShare({ files: [pdfFile, xlsxFile] })) {
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile, xlsxFile] })) {
       await navigator.share({ files: [pdfFile, xlsxFile] });
+      showToast('Shared ✓');
       closeExportModal();
       return;
     }
   } catch (err) {
-    if (err.name === 'AbortError') { closeExportModal(); return; }
-    // Share failed — files already downloaded, show guidance
+    if (err.name === 'AbortError') return; // user dismissed — keep modal open to retry
+    // Share failed — fall through to download fallback
   }
 
-  // If share didn't work, guide the user
+  // Fallback: download files + show guidance
+  dlBlob(exportedXlsxBlob, exportedXlsxName);
+  await sleep(500);
+  dlBlob(exportedPdfBlob, exportedPdfName);
   showExportError('✓ Files saved to Downloads. Open WhatsApp/Signal → tap 📎 → attach from Downloads.', true);
 }
 
@@ -1115,7 +1092,6 @@ function resetExportModal() {
   btn.disabled = false;
   btn.innerHTML = 'Build Export';
   document.getElementById('export-actions').style.display = 'none';
-  document.getElementById('export-share-btn').style.display = 'none';
   document.getElementById('export-error').style.display = 'none';
 }
 
@@ -1330,7 +1306,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Version indicator for debugging cache issues
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 console.log('BOP Expenses ' + APP_VERSION);
 
 init();
